@@ -18,6 +18,21 @@ def analyze_image_bytes(image_bytes):
     Input: file-like object (BytesIO or uploaded file)
     Output: PIL annotated image, summary dict
     """
+ # backend.py
+import os
+import subprocess
+
+# 🩹 Fix for Streamlit Cloud: install OpenCV if missing
+try:
+    import cv2
+except ImportError:
+    subprocess.run(["pip", "install", "opencv-python-headless==4.8.1.78"], check=True)
+    import cv2
+
+from PIL import Image
+import numpy as np
+from ultralytics import YOLO
+
     pil = Image.open(image_bytes).convert("RGB")
     img = np.array(pil)  # RGB
     h_img, w_img, _ = img.shape
