@@ -1,66 +1,59 @@
+# app.py
 import streamlit as st
 from backend import analyze_image_bytes
 from docx import Document
 from docx.shared import Inches
+import io
 
-st.title("Dilapidation Survey Prototype")
+# 🌟 App title
+st.title("Dilapidation Auto Detection Prototype")
 
-# --- Mode selection ---
-mode = st.selectbox(
-    "Select analysis mode:",
-    ["Crack (with ruler)", "Other defect (no ruler)"]
+# 📤 Upload multiple images
+uploaded = st.file_uploader(
+    "Upload one or more images", 
+    type=["jpg", "jpeg", "png"], 
+    accept_multiple_files=True
 )
 
-# --- Crack calibration (only visible if Crack mode selected) ---
-ref_mm = 0.3
-if mode == "Crack (with ruler)":
-    st.subheader("Calibration for Crack Measurement")
-    ref_mm = st.number_input("Enter actual crack width on ruler (mm):", value=0.3, step=0.01)
+# Process uploaded images
+if uploaded:
+    st.info("Processing images, please wait...")
+    results = []
+    
+    for f in uploaded:
+        # Read image bytes
+        img_bytes = f.read()
+        
+        # Analyze the image using your trained model
+        out_pil, summary = analyze_image_bytes(io.BytesIO(img_bytes))
+        
+        # Show image + result
+        st.image(out_pil, caption=f"{f.name} — {summary.get('description')}", use_column_width=True)
+        st.write(summary)
+        
+        results.append((f.name, out_pil, summary))
 
-# --- File upload ---
-uploaded_files = st.file_uploader("Upload site photos", type=["jpg","png"], accept_multiple_files=True)
-
-# --- Site info ---
-location = st.text_input("Site Location")
-inspector = st.text_input("Inspector Name")
-date = st.date_input("Date")
-
-if uploaded_files:
-    reports = []
-    for f in uploaded_files:
-        if mode == "Crack (with ruler)":
-            out_img, summary = process_image(f, mode="crack", ref_mm=ref_mm)
-        else:
-            out_img, summary = process_image(f, mode="defect")
-
-        if summary["found"]:
-            st.image(out_img, caption=summary["description"], use_column_width=True)
-            st.json(summary)
-            reports.append((f.name, out_img, summary))
-        else:
-            st.warning(f"No issue detected in {f.name}")
-
-    # --- Generate Word report ---
-    if st.button("Generate Word Report"):
+    # 📝 Optional: Generate Word report
+    if st.button("📄 Generate Word Report"):
         doc = Document()
         doc.add_heading("Dilapidation Survey Report", 0)
-        doc.add_paragraph(f"Location: {location}")
-        doc.add_paragraph(f"Inspector: {inspector}")
-        doc.add_paragraph(f"Date: {date}")
 
-        for idx,(name, out_img, summary) in enumerate(reports,1):
-            doc.add_heading(f"Issue {idx}: {name}", level=1)
-            doc.add_paragraph(summary["description"])
-            out_img.save(f"temp_{idx}.png")
-            doc.add_picture(f"temp_{idx}.png", width=Inches(5))
+        for i, (name, pil_img, summary) in enumerate(results, start=1):
+            doc.add_heading(f"Issue {i}: {name}", level=2)
+            doc.add_paragraph(summary.get("description", ""))
+            
+            # Convert image to bytes for Word file
+            img_io = io.BytesIO()
+            pil_img.save(img_io, format="JPEG")
+            img_io.seek(0)
+            doc.add_picture(img_io, width=Inches(5))
+        
+        # Save and provide download link
+        out_file = "dilapidation_report.docx"
+        doc.save(out_file)
+        
+        with open(out_file, "rb") as fh:
+            st.download_button("📥 Download Word Report", fh, file_name=out_file)
 
-        report_filename = "dilapidation_report.docx"
-        doc.save(report_filename)
-
-        with open(report_filename, "rb") as file:
-            st.download_button(
-                label="📥 Download Report",
-                data=file,
-                file_name=report_filename,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+else:
+    st.info("👆 Please upload images above to begin analysis.")
